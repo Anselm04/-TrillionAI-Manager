@@ -1,3 +1,4 @@
+import {Waiting} from './services.ts';
 import type {Task} from './domain.ts';
 export type Config = Record<string,{url:string,token:string}>;
 export class AdapterError extends Error { code:string; constructor(code:string){super(code);this.code=code;} }
@@ -16,6 +17,7 @@ export async function execute(task:Task,config:Config,request:typeof fetch=fetch
  // Never trust an HTTP 200/queued receipt as completed delivery.
  const v=await request(c.url+'/jobs/'+encodeURIComponent(task.id),{headers,signal:AbortSignal.timeout(30000),redirect:'error'});
  if(!v.ok)throw new AdapterError(`verification_http_${v.status}`);const proof=await v.json();
+ if(proof.taskId===task.id && ['queued','running','pending'].includes(proof.status))throw new Waiting('integration_job_pending',30000);
  if(proof.taskId!==task.id || proof.status!=='verified' || !/^https:\/\//.test(proof.evidenceUrl||'')) throw new AdapterError('job_not_verified');
  return {taskId:task.id,status:'verified',evidenceUrl:proof.evidenceUrl};
 }

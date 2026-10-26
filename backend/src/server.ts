@@ -1,3 +1,6 @@
+import {routeCustomer,authUser,replyTicket} from './customerRoutes.ts';
+import {commerce} from './commerce.ts';
+import type {Env} from './services.ts';
 import {recordObservation} from './economics.ts';
 import {createServer, type IncomingMessage} from 'node:http';
 import {timingSafeEqual,randomUUID} from 'node:crypto';
@@ -9,16 +12,12 @@ import {checkout} from './stripe.ts';
 const env=process.env;
 function equal(a:string,b:string){const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length && timingSafeEqual(x,y);}
 async function body(req:IncomingMessage){const chunks:Buffer[]=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>262144)throw Error('body_too_large');chunks.push(chunk);}return Buffer.concat(chunks);}
-async function owner(req:IncomingMessage){
- const auth=req.headers.authorization;
- if(!auth?.startsWith('Bearer ') || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY || !env.OWNER_USER_ID)throw Error('unauthorized');
- const r=await fetch(env.SUPABASE_URL+'/auth/v1/user',{headers:{authorization:auth,apikey:env.SUPABASE_PUBLISHABLE_KEY},signal:AbortSignal.timeout(10000),redirect:'error'});
- if(!r.ok)throw Error('unauthorized');const user=await r.json();if(user.id!==env.OWNER_USER_ID)throw Error('forbidden');
- return user;
+async function owner(req:IncomingMessage,settings:Env=env,request:typeof fetch=fetch){
+ const user=await authUser(req,settings,request);if(!settings.OWNER_USER_ID||user.id!==settings.OWNER_USER_ID)throw Error('forbidden');return user;
 }
-function integration(req:IncomingMessage){const provided=req.headers.authorization||'';if(!env.INGRESS_TOKEN || !equal(provided,`Bearer ${env.INGRESS_TOKEN}`))throw Error('unauthorized');}
+function integration(req:IncomingMessage,settings:Env=env){const provided=req.headers.authorization||'';if(!settings.INGRESS_TOKEN||!equal(provided,`Bearer ${settings.INGRESS_TOKEN}`))throw Error('unauthorized');}
 const validSystems=['appforge','marketing','secure','education','website','support'];
-export function createApp(store:Store){const rate=new Map<string,{at:number,count:number}>();return createServer(async(req,res)=>{
+export function createApp(store:Store,options:{env?:Env,request?:typeof fetch}={}){const env=options.env||process.env;const request=options.request||fetch;const rate=new Map<string,{at:number,count:number}>();return createServer(async(req,res)=>{
  const origin=req.headers.origin;
  res.setHeader('content-type','application/json');res.setHeader('cache-control','no-store');res.setHeader('x-content-type-options','nosniff');
  if(origin && origin===env.OWNER_APP_ORIGIN){res.setHeader('access-control-allow-origin',origin);res.setHeader('vary','Origin');res.setHeader('access-control-allow-headers','authorization,content-type,idempotency-key');res.setHeader('access-control-allow-methods','GET,POST,OPTIONS');}
@@ -27,13 +26,14 @@ export function createApp(store:Store){const rate=new Map<string,{at:number,coun
  if(req.method==='OPTIONS')return reply(origin===env.OWNER_APP_ORIGIN?204:403,{});
  const url=new URL(req.url||'/', 'http://localhost');const path=url.pathname;
  if(path==='/health' && req.method==='GET'){await store.transact(()=>true);return reply(200,{status:'ok'});}
+ if(await routeCustomer(req,res,{store,env,request,body:()=>body(req),reply}))return;
  if(path.startsWith('/buy/') && req.method==='GET'){
   const now=Date.now();for(const [k,v] of rate)if(now-v.at>60000)rate.delete(k);
   const ip=req.socket.remoteAddress||'unknown';const bucket=rate.get(ip)||{at:now,count:0};bucket.count++;rate.set(ip,bucket);
   if(bucket.count>30||rate.size>10000)return reply(429,{error:'checkout_rate_limited'});
   const offerId=path.slice(5);const offer=await store.transact(s=>s.offers.find(o=>o.id===offerId&&sellable(o)));
   if(!offer)return reply(409,{error:'offer_not_ready'});
-  const session=await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',randomUUID());
+  const session=await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',randomUUID(),request,{campaignId:await store.transact(s=>s.tasks.find(t=>t.id===url.searchParams.get('campaign')&&t.action==='campaign'&&t.payload.offerId===offer.id)?.id)});
   res.setHeader('location',session.url);return reply(303,{url:session.url});
  }
  if(path==='/webhooks/stripe' && req.method==='POST'){
@@ -42,19 +42,21 @@ export function createApp(store:Store){const rate=new Map<string,{at:number,coun
   const event=JSON.parse(raw.toString());await store.transact(s=>payment(s,event));return reply(200,{received:true});
  }
  if(path==='/ingress/leads' && req.method==='POST'){
-  integration(req);const p=JSON.parse((await body(req)).toString());
+  integration(req,env);const p=JSON.parse((await body(req)).toString());
   if(typeof p.sourceId!=='string'||p.sourceId.length>160||typeof p.email!=='string'||!/^\S+@\S+\.\S+$/.test(p.email)||p.consent!==true||typeof p.need!=='string'||p.need.length>4000) return reply(400,{error:'invalid_consented_enquiry'});
   const value=await store.transact(s=>{const prior=s.leads.find(l=>l.sourceId===p.sourceId);if(prior)return {id:prior.id};const lead={id:randomUUID(),sourceId:p.sourceId,email:p.email,need:p.need,consent:true,status:'new',at:Date.now()};s.leads.push(lead);enqueue(s,`qualify:${lead.id}`,'support',{leadId:lead.id,system:'support',maxCostMinor:0,need:lead.need},80);audit(s,'lead.received',{id:lead.id});return {id:lead.id};});return reply(201,value);
  }
- if(path==='/ingress/observations' && req.method==='POST'){integration(req);const p=JSON.parse((await body(req)).toString());await store.transact(s=>recordObservation(s,p));return reply(200,{recorded:true});}
+ if(path==='/ingress/observations' && req.method==='POST'){integration(req,env);const p=JSON.parse((await body(req)).toString());await store.transact(s=>recordObservation(s,p));return reply(200,{recorded:true});}
  if(path==='/ingress/satisfaction' && req.method==='POST'){
-  integration(req);const p=JSON.parse((await body(req)).toString());if(!['satisfied','needs_help'].includes(p.response)||!p.evidenceId)return reply(400,{error:'customer_evidence_required'});
+  integration(req,env);const p=JSON.parse((await body(req)).toString());if(!['satisfied','needs_help'].includes(p.response)||!p.evidenceId)return reply(400,{error:'customer_evidence_required'});
   await store.transact(s=>{const paid=s.payments.find(x=>x.id===p.paymentId && x.customerId===p.customerId);if(!paid)throw Error('unknown_payment');paid.satisfaction={response:p.response,evidenceId:p.evidenceId,at:Date.now()};if(p.response==='needs_help')enqueue(s,`support:${paid.id}:${p.evidenceId}`,'support',{paymentId:paid.id,system:'support',maxCostMinor:0},110);audit(s,'customer.feedback',{paymentId:paid.id,response:p.response});});return reply(200,{recorded:true});
  }
- await owner(req);
- if(path==='/state' && req.method==='GET')return reply(200,await store.transact(s=>({running:s.running,metrics:metrics(s),tasks:s.tasks.slice(-100).reverse(),offers:s.offers,leads:s.leads.slice(-100),audit:s.audit.slice(-100).reverse(),integrations:Object.keys(configurations())})));
+ await owner(req,env,request);
+ const receipt=path.match(/^\/receipts\/([^/]+)$/);if(receipt&&req.method==='GET'){const mail=await store.transact(s=>commerce(s).outbox.find(m=>m.id===receipt[1]&&m.status==='sent'));return reply(mail?200:404,mail?{id:mail.id,status:mail.status,providerId:mail.providerId,sentAt:mail.sentAt}:{error:'receipt_not_found'});}
+ if(path==='/state' && req.method==='GET')return reply(200,await store.transact(s=>({running:s.running,metrics:metrics(s),tasks:s.tasks.slice(-100).reverse(),offers:s.offers,leads:s.leads.slice(-100),audit:s.audit.slice(-100).reverse(),commerce:commerce(s),integrations:Object.keys(configurations(env))})));
  if(req.method!=='POST')return reply(404,{error:'not_found'});
  const p=JSON.parse((await body(req)).toString()||'{}');
+ const ticketReply=path.match(/^\/owner\/tickets\/([^/]+)\/reply$/);if(ticketReply){return reply(200,await store.transact(s=>replyTicket(s,ticketReply[1],p)));}
  if(path==='/mission') {if(typeof p.running!=='boolean')return reply(400,{error:'running_required'});await store.transact(s=>{s.running=p.running;audit(s,'owner.mission',{running:p.running});});return reply(200,{running:p.running});}
  if(path==='/approvals'){await store.transact(s=>decide(s,p.taskId,p.decision));return reply(200,{recorded:true});}
  if(path==='/tasks'){
@@ -70,11 +72,11 @@ export function createApp(store:Store){const rate=new Map<string,{at:number,coun
  if(path==='/checkout'){
   const offer=await store.transact(s=>s.offers.find(o=>o.id===p.offerId && sellable(o)));if(!offer)return reply(409,{error:'offer_not_ready'});
   const key=String(req.headers['idempotency-key']||'');if(!/^[\w-]{16,128}$/.test(key))return reply(400,{error:'idempotency_key_required'});
-  return reply(201,await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',key));
+  return reply(201,await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',key,request));
  }
  return reply(404,{error:'not_found'});
- }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required'];
- const status=code==='unauthorized'?401:code==='forbidden'?403:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
+ }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required','verified_email_required','customer_identity_conflict','invalid_ticket','invalid_question','invalid_reply','invalid_feedback','invalid_preferences','idempotency_key_required'];
+ const status=code==='unauthorized'?401:code==='forbidden'||code==='verified_email_required'?403:['entitlement_not_found','asset_not_found','subscription_not_found','ticket_not_found'].includes(code)?404:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
  reply(status,{error:status===503?'operation_unavailable':code||'invalid_request'});
  }
 });}

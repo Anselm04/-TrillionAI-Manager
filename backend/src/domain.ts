@@ -1,8 +1,10 @@
+import {recurringPayment} from './billing.ts';
+import {recordPurchase,revokeAccess,type Commerce} from "./commerce.ts";
 import {subscriptionEvent,economics} from './economics.ts';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 export type Action = 'campaign'|'deliver'|'support'|'improve'|'protect'|'educate'|'strategic';
-export type Task = {id:string,key:string,action:Action,payload:any,priority:number,status:string,attempts:number,due:number,lease?:number,claim?:string,result?:any,approval?:{decision:string,at:number},error?:string};
-export type State = {running:boolean,tasks:Task[],offers:any[],leads:any[],payments:any[],events:string[],audit:any[],memory:any[],costs:any[],subscriptions:any[],observations:any[]};
+export type Task = {id:string,key:string,action:Action,payload:any,priority:number,status:string,attempts:number,failures?:number,pendingSince?:number,due:number,lease?:number,claim?:string,result?:any,approval?:{decision:string,at:number},error?:string};
+export type State = {commerce?:Commerce,running:boolean,tasks:Task[],offers:any[],leads:any[],payments:any[],events:string[],audit:any[],memory:any[],costs:any[],subscriptions:any[],observations:any[]};
 export const initial = ():State => ({running:false,tasks:[],offers:[],leads:[],payments:[],events:[],audit:[],memory:[],costs:[],subscriptions:[],observations:[]});
 export function audit(s:State,event:string,details:any,now=Date.now()) { s.audit.push({id:randomUUID(),at:now,event,details}); }
 export function enqueue(s:State,key:string,action:Action,payload:any,priority=50,now=Date.now()) {
@@ -38,7 +40,7 @@ export function plan(s:State,now=Date.now()) {
 }
 export function claim(s:State,now=Date.now()) {
  if(!s.running) return null;
- for(const t of s.tasks) if(t.status==='running' && (t.lease||0)<now) {t.status=t.attempts>=5?'dead':'queued';t.due=now;audit(s,'task.lease_expired',{id:t.id},now);}
+ for(const t of s.tasks) if(t.status==='running' && (t.lease||0)<now) {t.failures=(t.failures||0)+1;t.status=t.failures>=5?'dead':'queued';t.due=now;audit(s,'task.lease_expired',{id:t.id},now);}
  const t=s.tasks.filter(t=>t.status==='queued' && t.due<=now).sort((a,b)=>b.priority-a.priority || a.due-b.due)[0];
  if(!t) return null;
  // Re-evaluate immutable risk fields on every execution.
@@ -47,11 +49,11 @@ export function claim(s:State,now=Date.now()) {
 }
 export function finish(s:State,id:string,token:string,result:any,error?:string,now=Date.now()) {
  const t=s.tasks.find(t=>t.id===id);if(!t || t.status!=='running' || t.claim!==token) return false;
- if(error) {t.error=error;t.status=t.attempts>=5?'dead':'queued';t.due=now+Math.min(3600000,1000*2**t.attempts);audit(s,'task.failed',{id,status:t.status,code:error},now);s.memory.push({at:now,taskId:id,outcome:error});return true;}
+ if(error) {t.failures=(t.failures||0)+1;t.error=error;t.status=t.failures>=5?'dead':'queued';t.due=now+Math.min(3600000,1000*2**t.attempts);audit(s,'task.failed',{id,status:t.status,code:error},now);s.memory.push({at:now,taskId:id,outcome:error});return true;}
  if(result?.status!=='verified' || typeof result.evidenceUrl!=='string' || !result.evidenceUrl.startsWith('https://')) throw Error('unverified_result');
  t.status='done';t.result=result;t.error=undefined;
  const p=s.payments.find(p=>p.id===t.payload.paymentId);
- if(p && t.action==='deliver') {p.delivered=true;p.deliveryEvidence=result.evidenceUrl;}
+ if(p && t.action==='deliver') {p.delivered=true;p.deliveredAt=now;p.deliveryEvidence=result.evidenceUrl;}
  // Satisfaction is only established by authenticated customer feedback, never an adapter assertion.
  audit(s,'task.verified',{id,evidenceUrl:result.evidenceUrl},now);s.memory.push({at:now,taskId:id,outcome:'verified',evidenceUrl:result.evidenceUrl});return true;
 }
@@ -64,6 +66,7 @@ export function verifySignature(raw:Buffer,header:string,secret:string,now=Date.
 export function payment(s:State,event:any,now=Date.now()) {
  if(event.livemode!==true || typeof event.id!=='string') throw Error('live_event_required');
  if(s.events.includes(event.id)) return;
+ if(recurringPayment(s,event,now)){s.events.push(event.id);return;}
  if(subscriptionEvent(s,event)){s.events.push(event.id);return;}
  const p=event.data?.object;
  if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(event.type)) {
@@ -71,11 +74,12 @@ export function payment(s:State,event:any,now=Date.now()) {
   const offer=s.offers.find(o=>o.id===p.metadata?.manager_offer_id);
   // Binding is set server-side on checkout creation and independently checked on receipt.
   if(!offer || p.metadata?.manager_price_id!==offer.stripePriceId || p.currency!==offer.currency || p.amount_total!==offer.priceMinor) throw Error('offer_payment_mismatch');
-  if(!s.payments.some(x=>x.id===p.payment_intent)) {const pending=s.observations.filter(x=>x.kind==='stripe_refund'&&x.paymentId===p.payment_intent).reduce((n,x)=>Math.max(n,x.refundMinor),0);s.payments.push({id:p.payment_intent,sessionId:p.id,offerId:offer.id,customerId:p.customer,amountMinor:p.amount_total,currency:p.currency,at:now,delivered:false,refunded:pending>=p.amount_total,refundMinor:pending});audit(s,'payment.confirmed',{id:p.payment_intent,offerId:offer.id},now);}
+  if(!s.payments.some(x=>x.id===p.payment_intent)) {const pending=s.observations.filter(x=>x.kind==='stripe_refund'&&x.paymentId===p.payment_intent).reduce((n,x)=>Math.max(n,x.refundMinor),0);s.payments.push({id:p.payment_intent,sessionId:p.id,offerId:offer.id,customerId:p.customer,amountMinor:p.amount_total,currency:p.currency,at:now,delivered:false,refunded:pending>=p.amount_total,refundMinor:pending});recordPurchase(s,s.payments[s.payments.length-1],p);audit(s,'payment.confirmed',{id:p.payment_intent,offerId:offer.id},now);}
  } else if(event.type==='charge.refunded') {
   if(!Number.isSafeInteger(p?.amount_refunded)||p.amount_refunded<0||!p.payment_intent)throw Error('invalid_refund');
-  s.observations.push({kind:'stripe_refund',id:event.id,paymentId:p.payment_intent,refundMinor:p.amount_refunded,at:now});
-  const paid=s.payments.find(x=>x.id===p.payment_intent);if(paid) {paid.refundMinor=Math.max(paid.refundMinor||0,p.amount_refunded);paid.refunded=paid.refundMinor>=paid.amountMinor;
+  s.observations.push({kind:'stripe_refund',id:event.id,paymentId:p.payment_intent,invoiceId:p.invoice,refundMinor:p.amount_refunded,at:now});
+  const paid=s.payments.find(x=>x.id===p.payment_intent||x.paymentIntentId===p.payment_intent||(p.invoice&&x.invoiceId===p.invoice));if(paid) {paid.refundMinor=Math.max(paid.refundMinor||0,p.amount_refunded);paid.refunded=paid.refundMinor>=paid.amountMinor;
+  if(paid.refunded)revokeAccess(s,paid.id);
   if(paid.refunded)for(const task of s.tasks)if(task.payload.paymentId===paid.id&&task.action==='deliver'&&['queued','approval'].includes(task.status)){task.status='cancelled';audit(s,'delivery.cancelled_refund',{id:task.id},now);}
   audit(s,'payment.refunded',{id:paid.id,refundMinor:paid.refundMinor,full:paid.refunded},now);}
  }
@@ -89,4 +93,10 @@ export function metrics(s:State) {
   supportOpen:s.leads.filter(l=>l.status==='support').length,deadTasks:s.tasks.filter(t=>t.status==='dead').length,
   productHealth:s.offers.map(o=>({id:o.id,sellable:sellable(o)})),
   unavailableReason:'Account-wide subscription reconciliation, attribution, traffic and cost coverage required; observed metrics are separately labeled.'};
+}
+
+export function defer(s:State,id:string,token:string,reason:string,delayMs:number,now=Date.now()){
+ const t=s.tasks.find(t=>t.id===id);if(!t||t.status!=='running'||t.claim!==token)return false;
+ t.pendingSince??=now;t.status=now-t.pendingSince>48*3600000?'blocked':'queued';t.due=now+Math.max(1000,Math.min(delayMs,3600000));t.error=reason;
+ audit(s,'task.waiting',{id,reason,status:t.status},now);return true;
 }

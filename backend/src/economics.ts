@@ -18,7 +18,7 @@ export function subscriptionEvent(s:State,event:any){
   mrr+=price.unit_amount*item.quantity/(recurring.interval_count*(recurring.interval==='year'?12:1));
  }
  if(!currency || !obj.items?.data?.length || obj.items.has_more)known=false;
- const row={id:obj.id,customerId:obj.customer,offerId:offer.id,status:obj.status,currency,mrrMinor:known?mrr:null,startedAt:obj.start_date*1000,canceledAt:obj.canceled_at?obj.canceled_at*1000:null,eventCreated:event.created,observedAt:Date.now()};
+ const row={id:obj.id,customerId:obj.customer,offerId:offer.id,status:obj.status,currency,mrrMinor:known?mrr:null,startedAt:obj.start_date*1000,canceledAt:obj.canceled_at?obj.canceled_at*1000:null,eventCreated:event.created,observedAt:Date.now(),cancelAtPeriodEnd:obj.cancel_at_period_end===true,currentPeriodEnd:(obj.current_period_end||Math.max(...(obj.items?.data||[]).map((x:any)=>x.current_period_end||0)))*1000};
  if(prior)Object.assign(prior,row);else s.subscriptions.push(row);
  audit(s,'subscription.observed',{id:obj.id,status:obj.status});return true;
 }
