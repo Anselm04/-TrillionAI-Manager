@@ -12,5 +12,5 @@ test('real PostgreSQL workers cannot claim the same task concurrently',{skip:!pr
  await store.enqueue({key:'concurrency',kind:'acquire',system:'marketing',payload:{},amount:0,priority:50});
  const claims=await Promise.all(Array.from({length:10},()=>store.claim()));
  assert.equal(claims.filter(Boolean).length,1);
- }finally{await db.query('drop schema if exists manager cascade');await db.close();}
+ }finally{await db.query('drop schema if exists manager_operator cascade');await db.close();}
 });
