@@ -1,0 +1,54 @@
+name: Revenue operator verification
+on:
+  push:
+    paths: ['services/revenue-operator/**', '.github/workflows/revenue-operator.yml']
+  pull_request:
+    paths: ['services/revenue-operator/**', '.github/workflows/revenue-operator.yml']
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: manager_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    defaults:
+      run:
+        working-directory: services/revenue-operator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: services/revenue-operator/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm run build
+      - run: npm test
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:ci_only@localhost:5432/manager_test
+      - run: docker build -t revenue-operator .
+  flutter:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/revenue-operator/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - run: flutter create --platforms=web,android,ios --project-name trillionai_manager .
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - run: flutter build web
