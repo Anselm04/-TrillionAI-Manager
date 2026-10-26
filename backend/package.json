@@ -1,1 +1,22 @@
-{"name":"trillionai-manager","private":true,"type":"module","engines":{"node":">=24.10.0"},"scripts":{"start":"node src/server.ts","test":"node --test test/*.test.ts"},"dependencies":{"pg":"8.16.3"},"devDependencies":{"@electric-sql/pglite":"0.3.14","@types/node":"24.10.0","@types/pg":"8.15.5","typescript":"5.9.3"}}
+{
+  "name": "trillionai-manager",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.10.0"
+  },
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test test/*.test.ts",
+    "check": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.3.14",
+    "@types/node": "24.10.0",
+    "@types/pg": "8.15.5",
+    "typescript": "5.9.3"
+  }
+}

@@ -77,3 +77,7 @@ TrillionAI Tech
 TrillionAI Manager is part of the broader TrillionAI technology ecosystem.
 
 Build. Automate. Operate. Scale.
+
+## Implemented runtime
+
+The initial Node/TypeScript operating runtime, PostgreSQL persistence, payment intake, approval controls and Flutter owner client are now in this repository. This is **not yet a production-complete autonomous company**. See [OPERATIONS.md](OPERATIONS.md) for running the code, API contracts and explicit limitations, and [AUDIT.md](AUDIT.md) for integration evidence. No live revenue or customer acquisition is claimed.

@@ -1,0 +1,30 @@
+name: Verify Manager
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.10.0'
+      - run: npm ci --ignore-scripts
+        working-directory: backend
+      - run: npm run check
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.27.4'
+          cache: true
+      - run: flutter pub get
+        working-directory: frontend
+      - run: flutter analyze
+        working-directory: frontend
