@@ -1,0 +1,7 @@
+node_modules
+backend/dist/
+.env
+*.log
+frontend/.dart_tool/
+frontend/build/
+frontend/.flutter-plugins-dependencies
