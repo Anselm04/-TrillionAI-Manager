@@ -73,7 +73,7 @@ export function createApp(store:Store){const rate=new Map<string,{at:number,coun
   return reply(201,await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',key));
  }
  return reply(404,{error:'not_found'});
- }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','subscription_timestamp_required'];
+ }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required'];
  const status=code==='unauthorized'?401:code==='forbidden'?403:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
  reply(status,{error:status===503?'operation_unavailable':code||'invalid_request'});
  }

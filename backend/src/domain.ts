@@ -71,9 +71,13 @@ export function payment(s:State,event:any,now=Date.now()) {
   const offer=s.offers.find(o=>o.id===p.metadata?.manager_offer_id);
   // Binding is set server-side on checkout creation and independently checked on receipt.
   if(!offer || p.metadata?.manager_price_id!==offer.stripePriceId || p.currency!==offer.currency || p.amount_total!==offer.priceMinor) throw Error('offer_payment_mismatch');
-  if(!s.payments.some(x=>x.id===p.payment_intent)) {s.payments.push({id:p.payment_intent,sessionId:p.id,offerId:offer.id,customerId:p.customer,amountMinor:p.amount_total,currency:p.currency,at:now,delivered:false,refunded:false});audit(s,'payment.confirmed',{id:p.payment_intent,offerId:offer.id},now);}
+  if(!s.payments.some(x=>x.id===p.payment_intent)) {const pending=s.observations.filter(x=>x.kind==='stripe_refund'&&x.paymentId===p.payment_intent).reduce((n,x)=>Math.max(n,x.refundMinor),0);s.payments.push({id:p.payment_intent,sessionId:p.id,offerId:offer.id,customerId:p.customer,amountMinor:p.amount_total,currency:p.currency,at:now,delivered:false,refunded:pending>=p.amount_total,refundMinor:pending});audit(s,'payment.confirmed',{id:p.payment_intent,offerId:offer.id},now);}
  } else if(event.type==='charge.refunded') {
-  const paid=s.payments.find(x=>x.id===p.payment_intent);if(paid) {paid.refunded=true;paid.refundMinor=p.amount_refunded;audit(s,'payment.refunded',{id:paid.id},now);}
+  if(!Number.isSafeInteger(p?.amount_refunded)||p.amount_refunded<0||!p.payment_intent)throw Error('invalid_refund');
+  s.observations.push({kind:'stripe_refund',id:event.id,paymentId:p.payment_intent,refundMinor:p.amount_refunded,at:now});
+  const paid=s.payments.find(x=>x.id===p.payment_intent);if(paid) {paid.refundMinor=Math.max(paid.refundMinor||0,p.amount_refunded);paid.refunded=paid.refundMinor>=paid.amountMinor;
+  if(paid.refunded)for(const task of s.tasks)if(task.payload.paymentId===paid.id&&task.action==='deliver'&&['queued','approval'].includes(task.status)){task.status='cancelled';audit(s,'delivery.cancelled_refund',{id:task.id},now);}
+  audit(s,'payment.refunded',{id:paid.id,refundMinor:paid.refundMinor,full:paid.refunded},now);}
  }
  s.events.push(event.id);
 }
