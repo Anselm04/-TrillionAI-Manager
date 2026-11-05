@@ -41,3 +41,14 @@ export function reviewGrowthRecommendation(s:State,customerId:string,p:any,now=D
  audit(s,'customer.growth_recommendation_review',{customerId,code:p.code,decision:p.decision,executionTriggered:false},now);
  return row;
 }
+
+export function eraseGrowthFeedback(s:State,customerId:string,now=Date.now()){
+ const c=commerce(s);
+ const before=(c.growthReports||[]).length;
+ c.growthReports=(c.growthReports||[]).filter((r:any)=>r.customerId!==customerId);
+ c.growthRecommendationReviews=(c.growthRecommendationReviews||[]).filter((r:any)=>r.customerId!==customerId);
+ c.measurementPreferences=(c.measurementPreferences||[]).filter((r:any)=>r.customerId!==customerId);
+ const deleted=before-c.growthReports.length;
+ audit(s,'customer.growth_feedback_erased',{customerId,deletedCount:deleted},now);
+ return {deletedCount:deleted,sharingEnabled:false,erased:true};
+}
