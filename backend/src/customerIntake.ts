@@ -9,12 +9,21 @@ function field(value:unknown,max=600):string {
  if(typeof value!=='string')throw Error('invalid_brief');
  return value.trim().slice(0,max);
 }
+function needsDetail(text:string,which:'business'|'offer'|'audience'|'goal'){
+ const value=text.trim().toLowerCase().replace(/[.!?]+$/,'').replace(/\s+/g,' ');
+ if(value.length<(which==='goal'?12:8))return true;
+ if(/^(i (do not|don't) know|not sure|anything|whatever|help me|unsure)$/i.test(value))return true;
+ if(which==='business')return /^(my|a|the|i run a|i own a|i have a)?\s*(shop|store|business|company|online shop|online business|small business|services?)$/i.test(value);
+ if(which==='offer')return /^(my|our|some|all)?\s*(products?|services?|stuff|things|everything|anything|marketing)$/i.test(value);
+ if(which==='audience')return /^(everyone|anyone|all people|the public|general public|people|customers|everybody|any person)$/i.test(value);
+ return /^(i (want|need|would like|hope to) (to )?)?(get |have )?(more|better|increase|grow|improve|boost) (my )?(customers|sales|business|revenue|bookings|traffic|leads|marketing)( please)?$/i.test(value);
+}
 function questions(brief:Pick<Intake,'business'|'offer'|'audience'|'goal'>):string[]{
  const ask:string[]=[];
- if(brief.business.length<8)ask.push('What does your business do? A sentence or two is enough.');
- if(brief.offer.length<8)ask.push('Which product or service would you most like to promote?');
- if(brief.audience.length<8)ask.push('Who are your ideal customers, and where are they located?');
- if(brief.goal.length<12)ask.push('Would success mean more bookings, enquiries, paying customers, sales or something else?');
+ if(needsDetail(brief.business,'business'))ask.push('What does your business mainly provide? For example: home repairs, handmade furniture, a café or an online shop selling clothing.');
+ if(needsDetail(brief.offer,'offer'))ask.push('Which specific product or service should we promote first? You can name one popular item or the service you most want more bookings for.');
+ if(needsDetail(brief.audience,'audience'))ask.push('Who would benefit most, and where do you serve them? If unsure, tell us your typical customer or local area.');
+ if(needsDetail(brief.goal,'goal'))ask.push('When you say you want to grow, would more enquiries, confirmed bookings or paying customers be most useful? An approximate target is welcome but not required.');
  return ask;
 }
 export function saveBrief(s:State,customerId:string,p:any,now=Date.now()):Intake {
