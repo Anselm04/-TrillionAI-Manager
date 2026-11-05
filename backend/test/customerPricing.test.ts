@@ -36,7 +36,7 @@ test('customer gets only owner-approved exact prices and scopes with no executio
  assert.equal(options.options[0].priceMinor,100000);
  assert.equal(options.options[0].currency,'nzd');
  assert.equal(options.options[0].scopeDisclosure,o.scopeDisclosure);
- assert.equal(customerQuoteOptions(s,'other',b.id,now).verifiedOptionCount,0);
+ assert.throws(()=>customerQuoteOptions(s,'other',b.id,now),/confirmed_brief_required/);
 });
 test('prepared quote snapshots source price and prevents account leaks',()=>{
  const s=initial();const now=Date.now();const b=brief(s,'person');s.offers.push(ready(now));
