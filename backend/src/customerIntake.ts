@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import type {State} from './domain.ts';
-import {audit,} from './domain.ts';
+import {audit} from './domain.ts';
 import {commerce} from './commerce.ts';
 
 type Intake = {id:string,customerId:string,createdAt:number,updatedAt:number,revision:number,status:'needs_clarification'|'ready_for_confirmation'|'confirmed',business:string,offer:string,audience:string,goal:string,channels:string[],questions:string[],confirmedAt?:number,acknowledgementVersion?:string};
@@ -59,6 +59,7 @@ export function chooseMeasurement(s:State,customerId:string,p:any,now=Date.now()
  return updated;
 }
 export function submitGrowth(s:State,customerId:string,p:any,now=Date.now()){
+ if(!p||typeof p!=='object'||Array.isArray(p))throw Error('invalid_growth_report');
  const c=commerce(s);const preference=(c.measurementPreferences||[]).find((x:any)=>x.customerId===customerId);
  if(!preference||preference.level==='none'||preference.cadence==='off')throw Error('growth_reporting_not_enabled');
  if(typeof p?.period!=='string'||!/^(\d{4})-(\d{2})(-\d{2})?$/.test(p.period))throw Error('invalid_growth_report');
