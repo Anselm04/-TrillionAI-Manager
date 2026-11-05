@@ -14,6 +14,25 @@ export function validateMarketingSignature(raw:Buffer,timestamp:string,signature
  const provided=Buffer.from(signature,'hex');
  if(provided.length!==expected.length||!timingSafeEqual(provided,expected))throw Error('unauthorized');
 }
+function safeMarketingSignals(raw:any){
+ if(!raw || typeof raw!=='object'||raw.source!=='marketing_server_aggregate')return null;
+ const names=['campaignCount','providerVerifiedPairedCampaigns','providerVerifiedRevenueCampaigns','providerVerifiedSpendCampaigns','unattributedLeadCount'] as const;
+ if(names.some(name=>!Number.isSafeInteger(raw[name])||raw[name]<0||raw[name]>10000000))return null;
+ if(raw.providerVerifiedPairedCampaigns>raw.campaignCount
+ ||raw.providerVerifiedRevenueCampaigns>raw.campaignCount
+ ||raw.providerVerifiedSpendCampaigns>raw.campaignCount)return null;
+ return {
+  campaignCount:raw.campaignCount,
+  providerVerifiedPairedCampaigns:raw.providerVerifiedPairedCampaigns,
+  providerVerifiedRevenueCampaigns:raw.providerVerifiedRevenueCampaigns,
+  providerVerifiedSpendCampaigns:raw.providerVerifiedSpendCampaigns,
+  unattributedLeadCount:raw.unattributedLeadCount,
+  providerCoverage:raw.campaignCount===0?'none':raw.providerVerifiedPairedCampaigns===raw.campaignCount?'full':'partial_or_none',
+  revenueAmountsShared:false,
+  attributionProven:false,
+  note:'Marketing platform counts are separate from customer-reported growth. Provider verification of campaign metrics does not establish incremental customer revenue.',
+ };
+}
 export function marketingCommand(s:State,p:any,now=Date.now()) {
  if(!p || typeof p!=='object'||Array.isArray(p)||typeof p.sourceUserId!=='string'
     || !/^[a-zA-Z0-9._:-]{1,120}$/.test(p.sourceUserId)
@@ -39,7 +58,7 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
   case 'growth.preferences':result=chooseMeasurement(s,customerId,p.payload,now);break;
   case 'growth.submit':result=submitGrowth(s,customerId,p.payload,now);break;
   case 'growth.state':result=growthState(s,customerId);break;
-  case 'growth.assess':result=growthAssessment(s,customerId,now);break;
+  case 'growth.assess':result={...growthAssessment(s,customerId,now),marketingSignals:safeMarketingSignals(p.payload?.analytics)};break;
   case 'growth.review':result=reviewGrowthRecommendation(s,customerId,p.payload,now);break;
   case 'growth.erase':result=eraseGrowthFeedback(s,customerId,now);break;
   case 'automation.status':result=automationStatus(s,customerId);break;
