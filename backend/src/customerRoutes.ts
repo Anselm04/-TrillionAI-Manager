@@ -6,6 +6,7 @@ import {sellable,enqueue,audit} from './domain.ts';
 import {type Env,origin,jsonRequest,signedAsset,portalUrl} from './services.ts';
 import {checkout} from './stripe.ts';
 import {saveBrief,confirmBrief,listBriefs,chooseMeasurement,submitGrowth,growthState} from './customerIntake.ts';
+import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from './growthRecommendations.ts';
 export async function authUser(req:IncomingMessage,env:Env,request:typeof fetch=fetch){
  const authorization=req.headers.authorization;
  if(!authorization?.startsWith('Bearer ')||!env.SUPABASE_PUBLISHABLE_KEY)throw Error('unauthorized');
@@ -20,6 +21,7 @@ export async function routeCustomer(req:IncomingMessage,res:ServerResponse,ctx:{
  if(!path.startsWith('/customer/'))return false;
  const user=await authUser(req,env,request);const person=await store.transact(s=>customerForUser(s,user));
  if(path==='/customer/briefs'&&req.method==='GET') {reply(200,await store.transact(s=>listBriefs(s,person.id)));return true;}
+ if(path==='/customer/growth/assessment'&&req.method==='GET'){reply(200,await store.transact(s=>growthAssessment(s,person.id)));return true;}
  if(path==='/customer/growth'&&req.method==='GET') {reply(200,await store.transact(s=>growthState(s,person.id)));return true;}
  if(path==='/customer/state'&&req.method==='GET'){
   reply(200,await store.transact(s=>{const c=commerce(s);const stripeIds=person.stripeCustomerIds||[];return {customer:{id:person.id,email:person.email,marketingConsent:person.marketingConsent},orders:s.payments.filter(p=>p.managerCustomerId===person.id).map(p=>({id:p.id,offerId:p.offerId,amountMinor:p.amountMinor,currency:p.currency,at:p.at,delivered:p.delivered,refunded:p.refunded,satisfaction:p.satisfaction})),entitlements:c.entitlements.filter(e=>e.customerId===person.id&&e.status==='active').map(e=>({id:e.id,offerId:e.offerId,assets:e.assets.map((a:any,index:number)=>({index,name:a.name||'Download'}))})),quotes:c.quotes.filter(q=>q.customerId===person.id),tickets:c.tickets.filter(t=>t.customerId===person.id),subscriptions:s.subscriptions.filter(x=>stripeIds.includes(x.customerId)).map(x=>({id:x.id,status:x.status,offerId:x.offerId,cancelAtPeriodEnd:x.cancelAtPeriodEnd,currentPeriodEnd:x.currentPeriodEnd}))};}));return true;
@@ -40,6 +42,8 @@ export async function routeCustomer(req:IncomingMessage,res:ServerResponse,ctx:{
  if(path==='/customer/measurement-preferences') {
   reply(200,await store.transact(s=>chooseMeasurement(s,person.id,p)));return true;
  }
+ if(path==='/customer/growth/erase'){reply(200,await store.transact(s=>eraseGrowthFeedback(s,person.id)));return true;}
+ if(path==='/customer/growth/recommendations/review'){reply(200,await store.transact(s=>reviewGrowthRecommendation(s,person.id,p)));return true;}
  if(path==='/customer/growth') {
   reply(201,await store.transact(s=>submitGrowth(s,person.id,p)));return true;
  }
