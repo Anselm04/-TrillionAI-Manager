@@ -4,6 +4,7 @@ import type {Env} from './services.ts';
 import {recordObservation} from './economics.ts';
 import {createServer, type IncomingMessage} from 'node:http';
 import {timingSafeEqual,randomUUID} from 'node:crypto';
+import {validateMarketingSignature,marketingCommand} from './marketingBridge.ts';
 import {postgresStore,LocalStore,type Store} from './store.ts';
 import {audit,decide,enqueue,metrics,payment,sellable,verifySignature} from './domain.ts';
 import {configurations} from './adapters.ts';
@@ -41,6 +42,13 @@ export function createApp(store:Store,options:{env?:Env,request?:typeof fetch}={
   const raw=await body(req);verifySignature(raw,String(req.headers['stripe-signature']||''),env.STRIPE_WEBHOOK_SECRET);
   const event=JSON.parse(raw.toString());await store.transact(s=>payment(s,event));return reply(200,{received:true});
  }
+ if(path==='/ingress/marketing' && req.method==='POST'){
+  if(!env.MARKETING_BRIDGE_SECRET || env.MARKETING_BRIDGE_SECRET.length<32)return reply(503,{error:'marketing_bridge_not_configured'});
+  const raw=await body(req);
+  validateMarketingSignature(raw,String(req.headers['x-trillion-timestamp']||''),String(req.headers['x-trillion-signature']||''),env.MARKETING_BRIDGE_SECRET);
+  const command=JSON.parse(raw.toString()||'{}');
+  return reply(200,await store.transact(s=>marketingCommand(s,command)));
+ }
  if(path==='/ingress/leads' && req.method==='POST'){
   integration(req,env);const p=JSON.parse((await body(req)).toString());
   if(typeof p.sourceId!=='string'||p.sourceId.length>160||typeof p.email!=='string'||!/^\S+@\S+\.\S+$/.test(p.email)||p.consent!==true||typeof p.need!=='string'||p.need.length>4000) return reply(400,{error:'invalid_consented_enquiry'});
@@ -75,7 +83,7 @@ export function createApp(store:Store,options:{env?:Env,request?:typeof fetch}={
   return reply(201,await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',key,request));
  }
  return reply(404,{error:'not_found'});
- }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required','verified_email_required','customer_identity_conflict','invalid_ticket','invalid_question','invalid_reply','invalid_feedback','invalid_preferences','idempotency_key_required','invalid_brief','brief_clarification_required','brief_confirmation_required','confirmed_brief_immutable','invalid_measurement_preferences','measurement_acknowledgement_required','invalid_growth_report','growth_reporting_not_enabled','growth_period_already_reported'];
+ }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required','verified_email_required','customer_identity_conflict','invalid_ticket','invalid_question','invalid_reply','invalid_feedback','invalid_preferences','idempotency_key_required','invalid_brief','brief_clarification_required','brief_confirmation_required','confirmed_brief_immutable','invalid_measurement_preferences','measurement_acknowledgement_required','invalid_growth_report','growth_reporting_not_enabled','growth_period_already_reported','invalid_marketing_bridge_command','marketing_request_conflict'];
  const status=code==='unauthorized'?401:code==='forbidden'||code==='verified_email_required'?403:['entitlement_not_found','asset_not_found','subscription_not_found','ticket_not_found','brief_not_found'].includes(code)?404:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
  reply(status,{error:status===503?'operation_unavailable':code||'invalid_request'});
  }
