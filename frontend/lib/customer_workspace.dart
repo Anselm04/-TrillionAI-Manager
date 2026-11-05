@@ -17,8 +17,13 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
   final channels = TextEditingController();
   final note = TextEditingController();
   final customerChange = TextEditingController(text: '0');
+  final automationPlatformsInput = TextEditingController(text: 'facebook, instagram');
   Map<String, dynamic>? brief;
   Map<String, dynamic>? preference;
+  Map<String, dynamic>? automation;
+  String automationMode = 'manual';
+
+  bool automationAck = false;
   List<dynamic> reports = [];
   bool loading = true;
   bool busy = false;
@@ -40,7 +45,7 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
 
   @override
   void dispose() {
-    for (final controller in [business, offer, audience, goal, channels, note, customerChange]) {
+    for (final controller in [business, offer, audience, goal, channels, note, customerChange, automationPlatformsInput]) {
       controller.dispose();
     }
     super.dispose();
@@ -50,6 +55,8 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
     try {
       final rows = (await widget.request('/customer/briefs')) as List<dynamic>;
       final growth = (await widget.request('/customer/growth')) as Map<String, dynamic>;
+      Map<String,dynamic>? permissions;
+      try { permissions = Map<String,dynamic>.from((await widget.request('/customer/automation')) as Map); } catch (_) { permissions = null; }
       if (!mounted) return;
       setState(() {
         brief = rows.isEmpty ? null : Map<String, dynamic>.from(rows.last as Map);
@@ -62,6 +69,8 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
         }
         preference = growth['preference'] == null ? null : Map<String, dynamic>.from(growth['preference'] as Map);
         reports = (growth['reports'] as List?) ?? [];
+        automation = permissions;
+        automationMode = (permissions?['effectiveMode'] ?? 'manual').toString();
         level = (preference?['level'] ?? 'none').toString();
         cadence = (preference?['cadence'] ?? 'off').toString();
         loading = false;
@@ -113,6 +122,28 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
     });
     if (!mounted) return;
     setState(() { preference = Map<String, dynamic>.from(result as Map); understands = false; message = 'Your privacy preference was saved.'; });
+  }
+
+  Future<void> saveAutomation() async {
+    if (!automationAck) return;
+    final platforms = automationMode == 'manual'
+        ? <String>[]
+        : automationPlatformsInput.text.split(',').map((s) => s.trim().toLowerCase()).where((s) => s.isNotEmpty).toList();
+    final result = await widget.request('/customer/automation', {
+      'mode': automationMode,
+      'actions': automationMode == 'manual' ? <String>[] : <String>['draft_campaigns','schedule_approved_organic','review_results','recommend_optimisations'],
+      'platforms': platforms,
+      'maxSpendMinor': 0,
+      'acknowledged': true,
+      'version': 'customer-automation-policy-v1',
+    });
+    if (!mounted) return;
+    setState(() {
+      automation = Map<String,dynamic>.from(result as Map);
+      automationMode = (automation?['effectiveMode'] ?? 'manual').toString();
+      automationAck = false;
+      message = 'Your automation preferences were saved. No advertising spend or campaign actions were triggered.';
+    });
   }
 
   Future<void> saveReport() async {
@@ -175,6 +206,39 @@ class _CustomerWorkspaceState extends State<CustomerWorkspace> {
             FilledButton(onPressed: busy || !confirm ? null : () => act(confirmBrief), child: const Text('Confirm my requirements')),
           ],
           if (brief!['status'] == 'confirmed') const Text('Confirmed requirements are saved. Please contact support if your needs change.'),
+        ],
+      ]))),
+      const SizedBox(height: 16),
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const Text('Choose how much your Manager handles', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        const Text('Manual guidance is included. Semi-automated and fully automated permissions require a separately verified Manager subscription. Saving a preference never initiates a campaign or authorises advertising spend.'),
+        if (automation == null)
+          const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Text('Automation settings could not be verified. Your account remains in manual mode.'))
+        else ...[
+          for (final option in const [
+            ('manual','Manual — guide me and let me do the work'),
+            ('semi','Semi-automated — prepare approved workflows'),
+            ('full','Fully automated — within approved controls'),
+          ])
+            RadioListTile<String>(
+              value: option.$1,
+              groupValue: automationMode,
+              onChanged: busy || (option.$1 != 'manual' && automation?['paidManagerAutomationVerified'] != true)
+                ? null
+                : (value) => setState(() { automationMode = value ?? 'manual';automationAck = false; }),
+              title: Text(option.$2),
+            ),
+          if (automationMode != 'manual') field(automationPlatformsInput, 'Allowed organic platforms', 'facebook, instagram'),
+          Text('Currently available: ${(automation?['availableModes'] as List? ?? ['manual']).join(', ')}.'),
+          const Text('Paid advertising remains disabled in these settings. Separate customer authorisation and budget controls are required.'),
+          CheckboxListTile(
+            value: automationAck,
+            onChanged: (value) => setState(() => automationAck = value ?? false),
+            title: const Text('I understand what Manager may do under this mode and that campaign execution remains subject to verified permissions.'),
+            controlAffinity: ListTileControlAffinity.leading,
+          ),
+          FilledButton(onPressed: busy || !automationAck ? null : () => act(saveAutomation),child: const Text('Save automation preferences')),
         ],
       ]))),
       const SizedBox(height: 16),
