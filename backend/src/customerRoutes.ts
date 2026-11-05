@@ -6,7 +6,7 @@ import {sellable,enqueue,audit} from './domain.ts';
 import {type Env,origin,jsonRequest,signedAsset,portalUrl} from './services.ts';
 import {checkout} from './stripe.ts';
 import {saveBrief,confirmBrief,listBriefs,chooseMeasurement,submitGrowth,growthState} from './customerIntake.ts';
-import {growthAssessment,reviewGrowthRecommendation} from './growthRecommendations.ts';
+import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from './growthRecommendations.ts';
 export async function authUser(req:IncomingMessage,env:Env,request:typeof fetch=fetch){
  const authorization=req.headers.authorization;
  if(!authorization?.startsWith('Bearer ')||!env.SUPABASE_PUBLISHABLE_KEY)throw Error('unauthorized');
@@ -42,6 +42,7 @@ export async function routeCustomer(req:IncomingMessage,res:ServerResponse,ctx:{
  if(path==='/customer/measurement-preferences') {
   reply(200,await store.transact(s=>chooseMeasurement(s,person.id,p)));return true;
  }
+ if(path==='/customer/growth/erase'){reply(200,await store.transact(s=>eraseGrowthFeedback(s,person.id)));return true;}
  if(path==='/customer/growth/recommendations/review'){reply(200,await store.transact(s=>reviewGrowthRecommendation(s,person.id,p)));return true;}
  if(path==='/customer/growth') {
   reply(201,await store.transact(s=>submitGrowth(s,person.id,p)));return true;
