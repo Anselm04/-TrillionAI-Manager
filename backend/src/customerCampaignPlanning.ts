@@ -31,8 +31,9 @@ export function proposeCampaign(s:State,customerId:string,p:any,now=Date.now()):
   platforms:[...platforms],deliverables:['Campaign strategy outline','Draft messaging for customer review','Publishing schedule proposal'],
   budgetMinor:0,executionAuthorized:false,published:false,createdAt:now,
  };
- commerce(s).customerCampaignProposals??=[];
- commerce(s).customerCampaignProposals.push(row);
+ const holder=commerce(s);
+ const plans=holder.customerCampaignProposals??(holder.customerCampaignProposals=[]);
+ plans.push(row);
  audit(s,'customer.campaign_proposed',{customerId,proposalId:row.id,platformCount:row.platforms.length,executionAuthorized:false},now);
  return row;
 }
