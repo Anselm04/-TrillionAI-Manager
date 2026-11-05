@@ -2,6 +2,7 @@ import {randomUUID, createHash} from 'node:crypto';
 import type {State} from './domain.ts';
 export interface Commerce {
  customers:any[];quotes:any[];tickets:any[];entitlements:any[];outbox:any[];effects:any[];incidents:any[];checkouts:any[];
+ briefs?:any[];measurementPreferences?:any[];growthReports?:any[];
 }
 export function commerce(s:State):Commerce {
  return s.commerce??=( {customers:[],quotes:[],tickets:[],entitlements:[],outbox:[],effects:[],incidents:[],checkouts:[]} );

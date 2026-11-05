@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'customer_workspace.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 const api = String.fromEnvironment('MANAGER_API_URL');
+class ApiFailure implements Exception { ApiFailure(this.status); final int status; }
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(url: const String.fromEnvironment('SUPABASE_URL'), anonKey: const String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY'));
@@ -17,6 +19,7 @@ class _ManagerState extends State<Manager> {
   final email = TextEditingController();
   final password = TextEditingController();
   Map<String, dynamic>? state;
+  Map<String, dynamic>? customerState;
   String? error;
   bool busy = false;
   Future<dynamic> request(String path, [Map<String, dynamic>? body]) async {
@@ -25,7 +28,7 @@ class _ManagerState extends State<Manager> {
     final headers = {'Authorization': 'Bearer $token', 'Content-Type': 'application/json'};
     final uri = Uri.parse('$api$path');
     final response = await (body == null ? http.get(uri, headers: headers) : http.post(uri, headers: headers, body: jsonEncode(body))).timeout(const Duration(seconds: 20));
-    if (response.statusCode >= 300) throw Exception('Request failed (${response.statusCode})');
+    if (response.statusCode >= 300) throw ApiFailure(response.statusCode);
     return jsonDecode(response.body);
   }
   Future<void> act(Future<void> Function() action) async {
@@ -33,7 +36,18 @@ class _ManagerState extends State<Manager> {
     try { await action(); } catch (_) { if (mounted) setState(() => error = 'Operation failed. Check authentication, connection and service status.'); }
     finally { if (mounted) setState(() => busy = false); }
   }
-  Future<void> refresh() async { final next = await request('/state'); if (mounted) setState(() => state = next); }
+  Future<void> refresh() async {
+    try {
+      final next = await request('/state');
+      if (mounted) setState(() { state = Map<String, dynamic>.from(next as Map); customerState = null; });
+    } on ApiFailure catch (failure) {
+      if (failure.status != 403) rethrow;
+      final next = await request('/customer/state');
+      if (mounted) setState(() { customerState = Map<String, dynamic>.from(next as Map); state = null; });
+    }
+  }
+  @override
+  void initState() { super.initState(); if (Supabase.instance.client.auth.currentSession != null) { Future.microtask(() => act(refresh)); } }
   @override
   void dispose() { email.dispose(); password.dispose(); super.dispose(); }
   @override
@@ -44,9 +58,14 @@ class _ManagerState extends State<Manager> {
       if (error != null) Text(error!, style: const TextStyle(color: Colors.orange)),
       if (busy) const LinearProgressIndicator(),
       if (!signedIn) ...[
-        TextField(controller: email, decoration: const InputDecoration(labelText: 'Owner email'), keyboardType: TextInputType.emailAddress),
+        TextField(controller: email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress),
         TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
         FilledButton(onPressed: busy ? null : () => act(() async { await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text); await refresh(); }), child: const Text('Sign in')),
+      ] else if (customerState == null && state == null) ...[
+        const Text('Checking your account permissions…'),
+        TextButton(onPressed: busy ? null : () => act(refresh), child: const Text('Retry loading my workspace')),
+      ] else if (customerState != null) ...[
+        SizedBox(height: MediaQuery.of(context).size.height * 0.78, child: CustomerWorkspace(request: request)),
       ] else ...[
         FilledButton(onPressed: busy ? null : () => act(() async { await request('/mission', {'running': state?['running'] != true}); await refresh(); }), child: Text(state?['running'] == true ? 'Pause TrillionAI' : 'Run TrillionAI')),
         const Text('Pause stops new work; jobs already sent to ecosystem services may finish.'),
@@ -67,7 +86,7 @@ class _ManagerState extends State<Manager> {
           const Text('Audit trail', style: TextStyle(fontSize: 20)),
           for (final entry in state!['audit']) Text('${entry['event']} ${jsonEncode(entry['details'])}'),
         ],
-        TextButton(onPressed: busy ? null : () => act(() async { await Supabase.instance.client.auth.signOut(); if (mounted) setState(() => state = null); }), child: const Text('Sign out')),
+        TextButton(onPressed: busy ? null : () => act(() async { await Supabase.instance.client.auth.signOut(); if (mounted) setState(() { state = null; customerState = null; }); }), child: const Text('Sign out')),
       ],
     ]))));
   }
