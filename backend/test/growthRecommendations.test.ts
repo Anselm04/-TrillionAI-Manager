@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {initial} from '../src/domain.ts';
 import {saveBrief,confirmBrief,chooseMeasurement,submitGrowth} from '../src/customerIntake.ts';
-import {growthAssessment,reviewGrowthRecommendation} from '../src/growthRecommendations.ts';
+import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from '../src/growthRecommendations.ts';
 import {marketingCommand} from '../src/marketingBridge.ts';
 
 function confirmed(s:ReturnType<typeof initial>,id:string) {
@@ -51,4 +51,20 @@ test('read-only bridge assessment stays fresh as feedback arrives',()=>{
  const second=marketingCommand(s,req('growth.assess','same-assess-key-1234'));
  assert.equal(second.reportCount,1);
  assert.notEqual(first.assessmentId,second.assessmentId);
+});
+
+test('erasure clears only that customer and disables future assessments until fresh opt-in',()=>{
+ const s=initial();
+ for(const id of ['customer-a','customer-b']){
+  chooseMeasurement(s,id,{level:'summary',cadence:'monthly',understoodLimitations:true});
+  submitGrowth(s,id,{period:'2026-09',method:'direction',value:'up'});
+ }
+ const erased=eraseGrowthFeedback(s,'customer-a');
+ assert.equal(erased.erased,true);
+ assert.equal(erased.deletedCount,1);
+ assert.equal(growthAssessment(s,'customer-a').status,'private');
+ assert.equal(growthAssessment(s,'customer-b').reportCount,1);
+ const request={sourceUserId:'customer-b',operation:'growth.erase',requestId:'erase-growth-1234567',payload:{}};
+ assert.equal(marketingCommand(s,request).erased,true);
+ assert.equal(growthAssessment(s,'marketing:customer-b').status,'private');
 });
