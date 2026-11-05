@@ -10,11 +10,11 @@ function field(value:unknown,max=600):string {
  return value.trim().slice(0,max);
 }
 function needsDetail(text:string,which:'business'|'offer'|'audience'|'goal'){
- const value=text.trim().toLowerCase().replace(/[.!?]+$/,'').replace(/\\s+/g,' ');
+ const value=text.trim().toLowerCase().replace(/[.!?]+$/,'').replace(/\s+/g,' ');
  if(value.length<(which==='goal'?12:8))return true;
  if(/^(i (do not|don't) know|not sure|anything|whatever|help me|unsure)$/i.test(value))return true;
- if(which==='business')return /^(my|a|the|i run a|i own a|i have a)?\\s*(shop|store|business|company|online shop|online business|small business|services?)$/i.test(value);
- if(which==='offer')return /^(my|our|some|all)?\\s*(products?|services?|stuff|things|everything|anything|marketing)$/i.test(value);
+ if(which==='business')return /^(my|a|the|i run a|i own a|i have a)?\s*(shop|store|business|company|online shop|online business|small business|services?)$/i.test(value);
+ if(which==='offer')return /^(my|our|some|all)?\s*(products?|services?|stuff|things|everything|anything|marketing)$/i.test(value);
  if(which==='audience')return /^(everyone|anyone|all people|the public|general public|people|customers|everybody|any person)$/i.test(value);
  return /^(i (want|need|would like|hope to) (to )?)?(get |have )?(more|better|increase|grow|improve|boost) (my )?(customers|sales|business|revenue|bookings|traffic|leads|marketing)( please)?$/i.test(value);
 }
