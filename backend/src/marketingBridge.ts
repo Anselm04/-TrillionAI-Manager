@@ -3,7 +3,7 @@ import type {State} from './domain.ts';
 import {audit} from './domain.ts';
 import {commerce} from './commerce.ts';
 import {saveBrief,confirmBrief,listBriefs,chooseMeasurement,submitGrowth,growthState} from './customerIntake.ts';
-import {growthAssessment,reviewGrowthRecommendation} from './growthRecommendations.ts';
+import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from './growthRecommendations.ts';
 
 export function validateMarketingSignature(raw:Buffer,timestamp:string,signature:string,secret:string,now=Date.now()) {
  if(typeof secret!=='string'||secret.length<32)throw Error('marketing_bridge_not_configured');
@@ -17,7 +17,7 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
  if(!p || typeof p!=='object'||Array.isArray(p)||typeof p.sourceUserId!=='string'
     || !/^[a-zA-Z0-9._:-]{1,120}$/.test(p.sourceUserId)
     || typeof p.requestId!=='string'|| !/^[a-zA-Z0-9:_-]{16,120}$/.test(p.requestId)) throw Error('invalid_marketing_bridge_command');
- const allowed=new Set(['brief.save','brief.confirm','brief.list','growth.preferences','growth.submit','growth.state','growth.assess','growth.review']);
+ const allowed=new Set(['brief.save','brief.confirm','brief.list','growth.preferences','growth.submit','growth.state','growth.assess','growth.review','growth.erase']);
  if(!allowed.has(p.operation))throw Error('invalid_marketing_bridge_command');
  const c=commerce(s);c.bridgeRequests??=[];
  const customerId='marketing:'+p.sourceUserId;
@@ -40,6 +40,7 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
   case 'growth.state':result=growthState(s,customerId);break;
   case 'growth.assess':result=growthAssessment(s,customerId,now);break;
   case 'growth.review':result=reviewGrowthRecommendation(s,customerId,p.payload,now);break;
+  case 'growth.erase':result=eraseGrowthFeedback(s,customerId,now);break;
  }
  // A stable client-generated request ID prevents duplicated side effects after network failures.
  // This bounded journal is temporary; high-volume operations require normalized storage.
