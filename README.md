@@ -81,3 +81,17 @@ Build. Automate. Operate. Scale.
 ## Implemented runtime
 
 The initial Node/TypeScript operating runtime, PostgreSQL persistence, payment intake, approval controls and Flutter owner client are now in this repository. This is **not yet a production-complete autonomous company**. See [OPERATIONS.md](OPERATIONS.md) for running the code, API contracts and explicit limitations, and [AUDIT.md](AUDIT.md) for integration evidence. No live revenue or customer acquisition is claimed.
+
+## Approved Customer Landing Page — LOCKED
+
+The official customer-facing **TrillionAI Manager™** landing-page design is approved and locked to the dark navy, neon cyan/violet, glowing mountain TrillionAI family aesthetic.
+
+The design includes the hero and SaaS command-centre preview, Revenue Visibility / Workflow Automation / Approval Control / Customer Operations feature strip, six capability cards, in-action demonstration, Connect → Monitor → Act explanation, transparent pricing cards, conversion section, and branded footer.
+
+**Authoritative design contract:** [LOCKED Customer Landing Page](design/LOCKED_CUSTOMER_LANDING_PAGE.md).
+
+**Strict separation:** This is a commercial, customer-facing Manager product. Customers only see data and agents belonging to their own organisation. The proprietary **TrillionAI Ecosystem Core** dashboard, internal company financials, product connections and privileged operations must never appear in Manager subscriber views.
+
+Numbers and prices depicted in the reference artwork are **illustrative placeholders**, not live operational figures or approved published prices. Trials, billing and calls to action may only be advertised after their actual availability and end-to-end verification.
+
+**Asset note:** The image reference is approved in the product-owner conversation, but the source PNG is not yet committed to this repository. The design requirements and approval are recorded here.
