@@ -5,6 +5,7 @@ import {commerce} from './commerce.ts';
 import {saveBrief,confirmBrief,listBriefs,chooseMeasurement,submitGrowth,growthState} from './customerIntake.ts';
 import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from './growthRecommendations.ts';
 import {automationStatus,setAutomationPolicy} from './customerAutomation.ts';
+import {listCampaignProposals,proposeCampaign,reviewCampaignProposal} from './customerCampaignPlanning.ts';
 
 export function validateMarketingSignature(raw:Buffer,timestamp:string,signature:string,secret:string,now=Date.now()) {
  if(typeof secret!=='string'||secret.length<32)throw Error('marketing_bridge_not_configured');
@@ -37,12 +38,12 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
  if(!p || typeof p!=='object'||Array.isArray(p)||typeof p.sourceUserId!=='string'
     || !/^[a-zA-Z0-9._:-]{1,120}$/.test(p.sourceUserId)
     || typeof p.requestId!=='string'|| !/^[a-zA-Z0-9:_-]{16,120}$/.test(p.requestId)) throw Error('invalid_marketing_bridge_command');
- const allowed=new Set(['brief.save','brief.confirm','brief.list','growth.preferences','growth.submit','growth.state','growth.assess','growth.review','growth.erase','automation.status','automation.set']);
+ const allowed=new Set(['brief.save','brief.confirm','brief.list','growth.preferences','growth.submit','growth.state','growth.assess','growth.review','growth.erase','automation.status','automation.set','campaign.propose','campaign.review','campaign.list']);
  if(!allowed.has(p.operation))throw Error('invalid_marketing_bridge_command');
  const c=commerce(s);c.bridgeRequests??=[];
  const customerId='marketing:'+p.sourceUserId;
  const key=customerId+':'+p.requestId;
- const isReadOnly=['growth.state','growth.assess','brief.list','automation.status'].includes(p.operation);
+ const isReadOnly=['growth.state','growth.assess','brief.list','automation.status','campaign.list'].includes(p.operation);
  const prior=isReadOnly?undefined:c.bridgeRequests.find((r:any)=>r.key===key);
  if(prior){
   if(prior.operation!==p.operation)throw Error('marketing_request_conflict');
@@ -63,6 +64,9 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
   case 'growth.erase':result=eraseGrowthFeedback(s,customerId,now);break;
   case 'automation.status':result=automationStatus(s,customerId);break;
   case 'automation.set':result=setAutomationPolicy(s,customerId,p.payload,now);break;
+  case 'campaign.list':result=listCampaignProposals(s,customerId);break;
+  case 'campaign.propose':result=proposeCampaign(s,customerId,p.payload,now);break;
+  case 'campaign.review':result=reviewCampaignProposal(s,customerId,p.payload,now);break;
  }
  // A stable client-generated request ID prevents duplicated side effects after network failures.
  // This bounded journal is temporary; high-volume operations require normalized storage.

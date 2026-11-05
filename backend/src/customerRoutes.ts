@@ -8,6 +8,7 @@ import {checkout} from './stripe.ts';
 import {saveBrief,confirmBrief,listBriefs,chooseMeasurement,submitGrowth,growthState} from './customerIntake.ts';
 import {growthAssessment,reviewGrowthRecommendation,eraseGrowthFeedback} from './growthRecommendations.ts';
 import {automationStatus,setAutomationPolicy} from './customerAutomation.ts';
+import {listCampaignProposals,proposeCampaign,reviewCampaignProposal} from './customerCampaignPlanning.ts';
 export async function authUser(req:IncomingMessage,env:Env,request:typeof fetch=fetch){
  const authorization=req.headers.authorization;
  if(!authorization?.startsWith('Bearer ')||!env.SUPABASE_PUBLISHABLE_KEY)throw Error('unauthorized');
@@ -21,6 +22,7 @@ export async function routeCustomer(req:IncomingMessage,res:ServerResponse,ctx:{
  }
  if(!path.startsWith('/customer/'))return false;
  const user=await authUser(req,env,request);const person=await store.transact(s=>customerForUser(s,user));
+ if(path==='/customer/campaign-proposals'&&req.method==='GET'){reply(200,await store.transact(s=>listCampaignProposals(s,person.id)));return true;}
  if(path==='/customer/automation'&&req.method==='GET'){reply(200,await store.transact(s=>automationStatus(s,person.id)));return true;}
  if(path==='/customer/briefs'&&req.method==='GET') {reply(200,await store.transact(s=>listBriefs(s,person.id)));return true;}
  if(path==='/customer/growth/assessment'&&req.method==='GET'){reply(200,await store.transact(s=>growthAssessment(s,person.id)));return true;}
@@ -36,6 +38,8 @@ export async function routeCustomer(req:IncomingMessage,res:ServerResponse,ctx:{
  }
  if(req.method!=='POST'){reply(404,{error:'not_found'});return true;}
  const p=JSON.parse((await ctx.body()).toString()||'{}');
+ if(path==='/customer/campaign-proposals'){reply(201,await store.transact(s=>proposeCampaign(s,person.id,p)));return true;}
+ if(path==='/customer/campaign-proposals/review'){reply(200,await store.transact(s=>reviewCampaignProposal(s,person.id,p)));return true;}
  if(path==='/customer/automation'){reply(200,await store.transact(s=>setAutomationPolicy(s,person.id,p)));return true;}
  if(path==='/customer/briefs') {
   reply(201,await store.transact(s=>saveBrief(s,person.id,p)));return true;
