@@ -47,6 +47,8 @@ class _ManagerState extends State<Manager> {
     }
   }
   @override
+  void initState() { super.initState(); if (Supabase.instance.client.auth.currentSession != null) { Future.microtask(() => act(refresh)); } }
+  @override
   void dispose() { email.dispose(); password.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) {
@@ -56,9 +58,12 @@ class _ManagerState extends State<Manager> {
       if (error != null) Text(error!, style: const TextStyle(color: Colors.orange)),
       if (busy) const LinearProgressIndicator(),
       if (!signedIn) ...[
-        TextField(controller: email, decoration: const InputDecoration(labelText: 'Owner email'), keyboardType: TextInputType.emailAddress),
+        TextField(controller: email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress),
         TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password')),
         FilledButton(onPressed: busy ? null : () => act(() async { await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text); await refresh(); }), child: const Text('Sign in')),
+      ] else if (customerState == null && state == null) ...[
+        const Text('Checking your account permissions…'),
+        TextButton(onPressed: busy ? null : () => act(refresh), child: const Text('Retry loading my workspace')),
       ] else if (customerState != null) ...[
         SizedBox(height: MediaQuery.of(context).size.height * 0.78, child: CustomerWorkspace(request: request)),
       ] else ...[
