@@ -60,7 +60,19 @@ export function marketingCommand(s:State,p:any,now=Date.now()) {
   case 'growth.preferences':result=chooseMeasurement(s,customerId,p.payload,now);break;
   case 'growth.submit':result=submitGrowth(s,customerId,p.payload,now);break;
   case 'growth.state':result=growthState(s,customerId);break;
-  case 'growth.assess':result={...growthAssessment(s,customerId,now),marketingSignals:safeMarketingSignals(p.payload?.analytics)};break;
+  case 'growth.assess':{
+   const assessment=growthAssessment(s,customerId,now);
+   const signals=safeMarketingSignals(p.payload?.analytics);
+   const measurementAdvice=assessment.status==='private'
+    ? 'Growth reporting is off; no customer sales conclusions can be drawn.'
+    : !signals || signals.campaignCount===0
+      ? 'No verified campaign coverage is available. Review tracking configuration before claiming commercial results.'
+      : signals.providerVerifiedPairedCampaigns===0
+        ? 'No campaign has paired provider-verified revenue and spending metrics. Consider improving conversion tracking with the customer\'s permission.'
+        : 'Some platform revenue/spend metrics have evidence coverage, but incremental sales and profitability are still unproven. Compare consistent business periods and permitted conversion data.';
+   result={...assessment,marketingSignals:signals,measurementAdvice,marketingIncreasedRevenueProven:false,automaticOptimisationExecuted:false};
+   break;
+  }
   case 'growth.review':result=reviewGrowthRecommendation(s,customerId,p.payload,now);break;
   case 'growth.erase':result=eraseGrowthFeedback(s,customerId,now);break;
   case 'automation.status':result=automationStatus(s,customerId);break;
