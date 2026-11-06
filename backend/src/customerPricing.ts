@@ -35,13 +35,16 @@ export function prepareCustomerQuote(s:State,customerId:string,p:any,now=Date.no
  const c=commerce(s);
  const existing=c.quotes.find(q=>q.customerId===customerId&&q.briefId===p.briefId&&q.offerId===p.offerId&&q.status==='offered'&&q.expiresAt>now);
  if(existing)return existing;
+ // A Marketing-authenticated ID is not a verified Manager billing identity.
+ // Suppress checkout until the customer explicitly links and verifies accounts.
+ const checkoutReady=!customerId.startsWith('marketing:') && c.customers.some((person:any)=>person.id===customerId&&typeof person.userId==='string'&&person.userId.length>0);
  const quote={
   id:randomUUID(),customerId,briefId:p.briefId,offerId:offer.id,
   name:offer.name,priceMinor:offer.priceMinor,currency:offer.currency,
   mode:offer.billingMode||'payment',billingInterval:offer.billingInterval||null,
   taxDisclosure:offer.taxDisclosure,scopeDisclosure:offer.scopeDisclosure,
   includedClaims:[...offer.approvedClaims],status:'offered',createdAt:now,
-  expiresAt:now+7*86400000,purchaseUrl:offer.purchaseUrl,source:'confirmed_customer_brief',
+  expiresAt:now+7*86400000,purchaseUrl:checkoutReady?offer.purchaseUrl:null,checkoutReady,checkoutMessage:checkoutReady?'Review the secure checkout before agreeing to payment.':'Checkout is unavailable until the Marketing customer identity is securely linked and verified with Manager.',source:'confirmed_customer_brief',
   paymentVerified:false,workAuthorized:false,
  };
  c.quotes.push(quote);
