@@ -42,6 +42,8 @@ test('prepared quote snapshots source price and prevents account leaks',()=>{
  const s=initial();const now=Date.now();const b=brief(s,'person');s.offers.push(ready(now));
  const q=prepareCustomerQuote(s,'person',{briefId:b.id,offerId:'marketing-furniture'},now);
  assert.equal(q.paymentVerified,false);assert.equal(q.workAuthorized,false);assert.equal(q.priceMinor,100000);
+ assert.equal(q.checkoutReady,false);
+ assert.equal(q.purchaseUrl,null);
  assert.equal(prepareCustomerQuote(s,'person',{briefId:b.id,offerId:'marketing-furniture'},now).id,q.id);
  assert.equal(listCustomerQuotes(s,'other').length,0);
  assert.equal(s.tasks.length,0);
@@ -54,5 +56,7 @@ test('signed bridge returns only customer-owned costed offers',()=>{
  assert.equal(opts.options.length,1);
  const q=cmd('alice','quote.prepare','quote-prepare-1234567',{briefId:b.id,offerId:opts.options[0].offerId});
  assert.equal(q.source,'confirmed_customer_brief');
+ assert.equal(q.checkoutReady,false);
+ assert.equal(q.purchaseUrl,null);
  assert.equal(cmd('bob','quote.list','quote-list-bob-123456',{}).length,0);
 });
