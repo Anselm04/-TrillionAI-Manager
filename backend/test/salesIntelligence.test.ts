@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {prioritizeSales} from '../src/salesIntelligence.ts';
+test('scopes consent and ranks recent signals',()=>{const s={id:'a',customerId:'c',consent:true,intent:1,fit:.5,observedAt:100};const r=prioritizeSales('c',[s,{...s,id:'b',customerId:'other'},{...s,id:'d',consent:false}],100);assert.equal(r.length,1);assert.equal(r[0].score,80);assert.equal(r[0].automaticExecution,false);});
