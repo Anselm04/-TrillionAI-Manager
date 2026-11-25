@@ -1,10 +1,11 @@
+import type {ProjectState} from './projectAuthority.ts';
 import {recurringPayment} from './billing.ts';
 import {recordPurchase,revokeAccess,type Commerce} from "./commerce.ts";
 import {subscriptionEvent,economics} from './economics.ts';
 import { randomUUID, createHmac, timingSafeEqual } from 'node:crypto';
 export type Action = 'campaign'|'deliver'|'support'|'improve'|'protect'|'educate'|'strategic';
 export type Task = {id:string,key:string,action:Action,payload:any,priority:number,status:string,attempts:number,failures?:number,pendingSince?:number,due:number,lease?:number,claim?:string,result?:any,approval?:{decision:string,at:number},error?:string};
-export type State = {commerce?:Commerce,running:boolean,tasks:Task[],offers:any[],leads:any[],payments:any[],events:string[],audit:any[],memory:any[],costs:any[],subscriptions:any[],observations:any[]};
+export type State = {projectAuthority?:ProjectState,commerce?:Commerce,running:boolean,tasks:Task[],offers:any[],leads:any[],payments:any[],events:string[],audit:any[],memory:any[],costs:any[],subscriptions:any[],observations:any[]};
 export const initial = ():State => ({running:false,tasks:[],offers:[],leads:[],payments:[],events:[],audit:[],memory:[],costs:[],subscriptions:[],observations:[]});
 export function audit(s:State,event:string,details:any,now=Date.now()) { s.audit.push({id:randomUUID(),at:now,event,details}); }
 export function enqueue(s:State,key:string,action:Action,payload:any,priority=50,now=Date.now()) {
