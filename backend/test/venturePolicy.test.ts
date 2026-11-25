@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateKeyPairSync,sign} from 'node:crypto';
+import {proposalDigest,assessOpportunity,reserveSimulation,type Proposal,type Request} from '../src/venturePolicy.ts';
+const p:Proposal={id:'venture-1',revision:1,budgetMinor:100,currency:'NZD',actions:['purchase'],suppliers:['supplier-1'],expiresAt:1000,transactionLimitMinor:80,forecastRevenueMinor:200,forecastCostMinor:100,evidenceIds:['evidence-1'],kind:'venture',description:'Pilot'};
+const {publicKey,privateKey}=generateKeyPairSync('ed25519');
+const key=publicKey.export({type:'spki',format:'pem'}).toString();
+const digest=proposalDigest(p),a={digest,signature:sign(null,Buffer.from('trillionai.project.v1:'+digest),privateKey).toString('base64')};
+const ledger={projectDigest:digest,revoked:false,reservations:[]};
+const r:Request={id:'order-1',action:'purchase',supplier:'supplier-1',amountMinor:70,currency:'NZD'};
+test('economic gate forecasts only',()=>{assert.equal(assessOpportunity(p).eligibleForOwnerReview,true);assert.equal(assessOpportunity({...p,forecastCostMinor:201}).eligibleForOwnerReview,false);assert.equal(assessOpportunity(p).executionAuthorized,false);});
+test('signature binds revision and scope',()=>{assert.throws(()=>reserveSimulation({...p,revision:2},a,ledger,r,key,1,100),/owner_approval_required/);assert.throws(()=>reserveSimulation(p,{...a,signature:'bad'},ledger,r,key,1,100),/owner_approval_required/);});
+test('expiry and revocation deny',()=>{assert.throws(()=>reserveSimulation(p,a,ledger,r,key,1000,100),/authority_inactive/);assert.throws(()=>reserveSimulation(p,a,{...ledger,revoked:true},r,key,1,100),/authority_inactive/);});
+test('supplier, currency, amount and capital restricted',()=>{for(const bad of [{...r,supplier:'other'},{...r,currency:'USD'},{...r,amountMinor:81}])assert.throws(()=>reserveSimulation(p,a,ledger,bad,key,1,100),/outside_scope/);assert.throws(()=>reserveSimulation(p,a,ledger,r,key,1,0),/budget_exceeded/);});
+test('reservations and replay',()=>{const next=reserveSimulation(p,a,ledger,r,key,1,100);assert.equal(ledger.reservations.length,0);assert.deepEqual(reserveSimulation(p,a,next,r,key,1,30),next);assert.throws(()=>reserveSimulation(p,a,next,{...r,amountMinor:20},key,1,30),/idempotency_conflict/);assert.throws(()=>reserveSimulation(p,a,next,{...r,id:'order-2',amountMinor:31},key,1,100),/budget_exceeded/);});
