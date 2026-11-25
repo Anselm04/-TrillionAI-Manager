@@ -112,3 +112,7 @@ TrillionAI Tech's ecosystem exists to continually generate and optimize sustaina
 - Preserve independent product operation and private internal company orchestration. No autonomous action is authorized by this document alone; runtime enforcement, authenticated permissions, bounded resources, durable audit evidence and independent qualification are required.
 
 This is the authoritative owner-approved commercial objective for future Manager engineering. It is a requirements contract, not a claim that autonomous revenue generation or Evolution Engine functionality is already implemented or verified.
+
+## Consolidated enterprise orchestration — LOCKED
+
+See [owner-governed enterprise orchestration contract](design/LOCKED_ENTERPRISE_ORCHESTRATION.md) for the revenue, evolution, venture, treasury, physical execution and essential-industry architecture. Every new project requires explicit owner approval before execution; this supersedes any earlier interpretation allowing autonomous project authorization. Complete and qualify the existing ecosystem and establish sustainable revenue before funded diversification. The offline project policy module is a simulation foundation only; no live financial authority is enabled.
