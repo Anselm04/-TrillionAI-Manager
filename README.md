@@ -95,3 +95,20 @@ The design includes the hero and SaaS command-centre preview, Revenue Visibility
 Numbers and prices depicted in the reference artwork are **illustrative placeholders**, not live operational figures or approved published prices. Trials, billing and calls to action may only be advertised after their actual availability and end-to-end verification.
 
 **Asset note:** The image reference is approved in the product-owner conversation, but the source PNG is not yet committed to this repository. The design requirements and approval are recorded here.
+
+## Owner-approved ecosystem commercial mission — LOCKED (2026-11-26)
+
+TrillionAI Tech's ecosystem exists to continually generate and optimize sustainable revenue and net profit automatically. Manager is responsible for coordinating this commercial mission through separately authorized internal Ecosystem Core integrations, while customer-facing Manager serves each customer's own organization and never exposes internal company data or privileges.
+
+### Mandatory decision policy
+
+- Maximize sustainable long-term revenue and net profit, not gross revenue, feature count, activity volume or short-term growth at the expense of customers or company viability.
+- Continuously identify, prioritize, execute, verify and improve lawful revenue-generating opportunities within granted authority. Measure actual collected revenue, refunds, fees, taxes, operating costs, retention and net contribution; distinguish forecasts from reconciled outcomes.
+- Autonomous Evolution Engine competitive upgrades qualify only when credible evidence supports incremental revenue, retained revenue or a material improvement in net profitability. Compare existing capabilities first; reject duplication, speculative feature chasing, negative economics and opportunities that displace more valuable work.
+- Use appropriately licensed reference implementations, existing software and bounded local/free resources. Additional cash expenditure is currently NZD 0 unless explicitly changed by the owner. No unlimited AI, compute or data usage at company expense. No hardware acquisitions or paid service activation without owner approval; prepare hardware-independent software for future revenue-funded expansion.
+- Engineering must occur in isolated branches; independent TestLab, Audit and Secure evidence must qualify the exact candidate revision before policy-authorized merging. Merge and deployment are distinct. Measure realized outcomes, learn from them and safely revert or retire ineffective changes.
+- Maintain a separate protective maintenance lane for essential security, reliability, defect remediation and mandatory legal compliance, even when incremental revenue cannot be quantified.
+- Respect customer consent, privacy, honest marketing, contractual obligations, legal compliance, tenant isolation, security and existing approval requirements. Financial objectives never override these controls. Agents cannot approve their own work, expand their authority, alter budgets or weaken governing policies. Pricing changes, privileged policy changes, paid services and hardware purchases require explicit owner authorization.
+- Preserve independent product operation and private internal company orchestration. No autonomous action is authorized by this document alone; runtime enforcement, authenticated permissions, bounded resources, durable audit evidence and independent qualification are required.
+
+This is the authoritative owner-approved commercial objective for future Manager engineering. It is a requirements contract, not a claim that autonomous revenue generation or Evolution Engine functionality is already implemented or verified.
