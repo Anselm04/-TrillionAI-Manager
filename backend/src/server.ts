@@ -1,9 +1,10 @@
+import {submitProject,decideProject,reserveProjectAction,listProjects} from './projectAuthority.ts';
 import {routeCustomer,authUser,replyTicket} from './customerRoutes.ts';
 import {commerce} from './commerce.ts';
 import type {Env} from './services.ts';
 import {recordObservation} from './economics.ts';
 import {createServer, type IncomingMessage} from 'node:http';
-import {timingSafeEqual,randomUUID} from 'node:crypto';
+import {timingSafeEqual,randomUUID,createPublicKey,verify} from 'node:crypto';
 import {validateMarketingSignature,marketingCommand} from './marketingBridge.ts';
 import {postgresStore,LocalStore,type Store} from './store.ts';
 import {audit,decide,enqueue,metrics,payment,sellable,verifySignature} from './domain.ts';
@@ -59,11 +60,26 @@ export function createApp(store:Store,options:{env?:Env,request?:typeof fetch}={
   integration(req,env);const p=JSON.parse((await body(req)).toString());if(!['satisfied','needs_help'].includes(p.response)||!p.evidenceId)return reply(400,{error:'customer_evidence_required'});
   await store.transact(s=>{const paid=s.payments.find(x=>x.id===p.paymentId && x.customerId===p.customerId);if(!paid)throw Error('unknown_payment');paid.satisfaction={response:p.response,evidenceId:p.evidenceId,at:Date.now()};if(p.response==='needs_help')enqueue(s,`support:${paid.id}:${p.evidenceId}`,'support',{paymentId:paid.id,system:'support',maxCostMinor:0},110);audit(s,'customer.feedback',{paymentId:paid.id,response:p.response});});return reply(200,{recorded:true});
  }
- await owner(req,env,request);
+ const authenticatedOwner=await owner(req,env,request);
+ if(path==='/owner/projects'&&req.method==='GET')return reply(200,await store.transact(listProjects));
  const receipt=path.match(/^\/receipts\/([^/]+)$/);if(receipt&&req.method==='GET'){const mail=await store.transact(s=>commerce(s).outbox.find(m=>m.id===receipt[1]&&m.status==='sent'));return reply(mail?200:404,mail?{id:mail.id,status:mail.status,providerId:mail.providerId,sentAt:mail.sentAt}:{error:'receipt_not_found'});}
  if(path==='/state' && req.method==='GET')return reply(200,await store.transact(s=>({running:s.running,metrics:metrics(s),tasks:s.tasks.slice(-100).reverse(),offers:s.offers,leads:s.leads.slice(-100),audit:s.audit.slice(-100).reverse(),commerce:commerce(s),integrations:Object.keys(configurations(env))})));
  if(req.method!=='POST')return reply(404,{error:'not_found'});
  const p=JSON.parse((await body(req)).toString()||'{}');
+ if(path==='/owner/projects'||path==='/owner/projects/decision'||path==='/owner/projects/reservations'){
+  // Owner identity is verified by the existing Supabase auth endpoint. Require an
+  // additional detached signature over the exact decision for approval/revocation.
+  if(path==='/owner/projects')return reply(201,await store.transact(s=>submitProject(s,p)));
+  if(path==='/owner/projects/decision'){
+   if(!env.OWNER_PROJECT_PUBLIC_KEY)return reply(503,{error:'project_signing_key_required'});
+   if(typeof p.id!=='string'||typeof p.digest!=='string'||!/^[a-f0-9]{64}$/.test(p.digest)||!['approve','reject','revoke'].includes(p.decision)||typeof p.signature!=='string'||p.signature.length>128)return reply(400,{error:'invalid_project_decision'});
+   const key=createPublicKey(env.OWNER_PROJECT_PUBLIC_KEY);
+   const message=JSON.stringify(['trillionai.owner.project.v2',authenticatedOwner.id,p.id,p.digest,p.decision]);
+   if(key.asymmetricKeyType!=='ed25519'||!verify(null,Buffer.from(message),key,Buffer.from(p.signature,'base64')))return reply(403,{error:'invalid_project_signature'});
+   return reply(200,await store.transact(s=>decideProject(s,p.id,p.digest,p.decision,authenticatedOwner.id)));
+  }
+  return reply(201,await store.transact(s=>reserveProjectAction(s,p.id,p.digest,p.request)));
+ }
  const ticketReply=path.match(/^\/owner\/tickets\/([^/]+)\/reply$/);if(ticketReply){return reply(200,await store.transact(s=>replyTicket(s,ticketReply[1],p)));}
  if(path==='/mission') {if(typeof p.running!=='boolean')return reply(400,{error:'running_required'});await store.transact(s=>{s.running=p.running;audit(s,'owner.mission',{running:p.running});});return reply(200,{running:p.running});}
  if(path==='/approvals'){await store.transact(s=>decide(s,p.taskId,p.decision));return reply(200,{recorded:true});}
@@ -83,8 +99,8 @@ export function createApp(store:Store,options:{env?:Env,request?:typeof fetch}={
   return reply(201,await checkout(offer,env.STRIPE_SECRET_KEY||'',env.CHECKOUT_SUCCESS_URL||'',env.CHECKOUT_CANCEL_URL||'',key,request));
  }
  return reply(404,{error:'not_found'});
- }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required','verified_email_required','customer_identity_conflict','invalid_ticket','invalid_question','invalid_reply','invalid_feedback','invalid_preferences','idempotency_key_required','invalid_brief','brief_clarification_required','brief_confirmation_required','confirmed_brief_immutable','invalid_measurement_preferences','measurement_acknowledgement_required','invalid_growth_report','growth_reporting_not_enabled','growth_period_already_reported','invalid_marketing_bridge_command','marketing_request_conflict','invalid_recommendation_review','stale_recommendation','recommendation_already_reviewed','invalid_automation_policy','paid_spend_requires_separate_authorisation','manager_subscription_required','automation_platforms_required','invalid_campaign_proposal','confirmed_brief_required','campaign_proposal_limit','invalid_campaign_review','campaign_proposal_not_found','campaign_proposal_already_reviewed','invalid_customer_quote','quote_option_not_available'];
- const status=code==='unauthorized'?401:code==='forbidden'||code==='verified_email_required'?403:['entitlement_not_found','asset_not_found','subscription_not_found','ticket_not_found','brief_not_found'].includes(code)?404:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
+ }catch(e){const code=e instanceof Error?e.message:'';const bad=['invalid_proposal','project_ineligible','project_id_conflict','project_capacity','project_approval_mismatch','project_invalid_transition','project_spending_disabled','project_authority_inactive','project_outside_scope','project_idempotency_conflict','invalid_signature','live_event_required','paid_customer_required','offer_payment_mismatch','invalid_approval','offer_immutable_create_new_version','unknown_payment','invalid_observation','invalid_cost','invalid_traffic','invalid_health','invalid_refund','subscription_timestamp_required','verified_email_required','customer_identity_conflict','invalid_ticket','invalid_question','invalid_reply','invalid_feedback','invalid_preferences','idempotency_key_required','invalid_brief','brief_clarification_required','brief_confirmation_required','confirmed_brief_immutable','invalid_measurement_preferences','measurement_acknowledgement_required','invalid_growth_report','growth_reporting_not_enabled','growth_period_already_reported','invalid_marketing_bridge_command','marketing_request_conflict','invalid_recommendation_review','stale_recommendation','recommendation_already_reviewed','invalid_automation_policy','paid_spend_requires_separate_authorisation','manager_subscription_required','automation_platforms_required','invalid_campaign_proposal','confirmed_brief_required','campaign_proposal_limit','invalid_campaign_review','campaign_proposal_not_found','campaign_proposal_already_reviewed','invalid_customer_quote','quote_option_not_available'];
+ const status=code==='unauthorized'?401:code==='forbidden'||code==='verified_email_required'?403:['project_not_found','entitlement_not_found','asset_not_found','subscription_not_found','ticket_not_found','brief_not_found'].includes(code)?404:code==='body_too_large'?413:bad.includes(code)||e instanceof SyntaxError?400:503;
  reply(status,{error:status===503?'operation_unavailable':code||'invalid_request'});
  }
 });}
